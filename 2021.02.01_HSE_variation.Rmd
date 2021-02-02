@@ -2,7 +2,7 @@
 title: "Применение математических методов в лингвистике"
 subtitle: "Исследование вариативности в Зиловском андийском"
 author: "Г. А. Мороз, С. Ферхеес"
-institute: "Linguistic Convergence Laboratory, NRU HSE"
+institute: "Международная лаборатория языковой конвергенции, НИУ ВШЭ"
 date: |
     | 02 февраля 2021
     |
@@ -477,7 +477,9 @@ nd_fes %>%
 
 ```{r}
 n_speakers_bootstraped %>% 
-  mutate(range = factor(range, levels=c("minimum", "maximum"))) %>% 
+  mutate(type = ifelse(type == "actual", "обычно спрашивают", "следует спрашивать"),
+         range = ifelse(range == "minimum", "минимум", "максимум"),
+         range = factor(range, levels=c("минимум", "максимум"))) %>% 
   ggplot(aes(value, fill = range)) +
   geom_density(alpha = 0.5)+
   facet_wrap(~type, nrow = 2, scales = "free")+
@@ -488,5 +490,96 @@ n_speakers_bootstraped %>%
         legend.justification = c(1.1, 1.1))
 ```
 
+# Что если `r n_iter` "среднестатистических" исследователя ... приедет в Зило?
+
+## `r n_iter` выборок из данных эксперимента
+
+```{r, fig.height=8.3}
+zilo_experiment %>% 
+  distinct(f_id, translation_ru, translation_ru) %>% 
+  left_join(experiment_sampling) %>% 
+  mutate(n_types = factor(n_types),
+         type_range = factor(type_range, levels = c("actual minimum", "actual maximum", "preference minimum", "preference maximum")),
+         translation_ru = fct_reorder(str_trunc(paste(f_id, translation_ru), 20), f_id)) %>% 
+  ggplot(aes(n_types, percentage, label = paste0(round(percentage), "%")))+
+  geom_col()+
+  geom_text(nudge_y = 15)+
+  facet_grid(translation_ru~type_range, scales = "free")+
+  coord_flip()+
+  theme(strip.text.y = element_text(angle=0))+
+  labs(x = 'количество вариантов ответов, обнаруженых "исследователями"',
+       y = 'процент "исследователей"')+
+  scale_y_continuous(limits = c(0, 125), breaks = c(0, 50, 100), labels = str_c(c(0, 50, 100), "%"))
+```
+
+## `r n_iter` выборок из данных эксперимента (энтропия)
+
+```{r, fig.height=8.3}
+zilo_experiment %>% 
+  count(translation_ru, value, f_id) %>% 
+  group_by(translation_ru, f_id) %>% 
+  mutate(ratio = n/sum(n),
+         entropy = round(-sum(ratio*log2(ratio)), 2)) %>%  
+  ungroup() %>% 
+  distinct(f_id, entropy, translation_ru) %>% 
+  full_join(experiment_sampling) %>% 
+  mutate(n_types = factor(n_types),
+         type_range = factor(type_range, levels = c("actual minimum", "actual maximum", "preference minimum", "preference maximum")),
+         translation_en = fct_reorder(str_c(str_trunc(paste(f_id, translation_ru), 15), " (", entropy, ")"), entropy)) %>% 
+  ggplot(aes(n_types, percentage, label = paste0(round(percentage), "%")))+
+  geom_col()+
+  geom_text(nudge_y = 15)+
+  facet_grid(translation_en~type_range, scales = "free")+
+  coord_flip()+
+  theme(strip.text.y = element_text(angle=0))+
+  labs(x = 'количество вариантов ответов, обнаруженых "исследователями"',
+       y = 'процент "исследователей"')+
+  scale_y_continuous(limits = c(0, 125), breaks = c(0, 50, 100), labels = str_c(c(0, 50, 100), "%"))
+```
+
+## Когда "исследователи" найдут меньше вариативности?
+
+```{r}
+zilo_experiment %>% 
+  count(translation_en, value, f_id) %>% 
+  group_by(translation_en) %>% 
+  mutate(ratio = n/sum(n),
+         entropy = round(-sum(ratio*log2(ratio)), 2)) %>%  
+  ungroup() %>% 
+  select(f_id, entropy) %>% 
+  distinct() %>% 
+  full_join(experiment_sampling) %>% 
+  mutate(type_range = factor(type_range, levels = c("actual minimum", "actual maximum", "preference minimum", "preference maximum")),
+         translation_en = fct_reorder(str_c(str_trunc(paste(f_id, translation_en), 15), " (", entropy, ")"), entropy)) %>% 
+  group_by(f_id, translation_en, entropy, type_range) %>% 
+  mutate(max_n_types = max(as.numeric(n_types)),
+         percantage = round(n/sum(n)*100)) %>% 
+  filter(n_types == max_n_types) %>%
+  mutate(range = str_extract(type_range, "m..imum"),
+         range = factor(range, levels=c("minimum", "maximum")),
+         type = str_extract(type_range, "[a-z]* "),
+         type = str_remove(type, "\\s"),
+         type = ifelse(type == "actual", "обычно спрашивают", "следует спрашивать"),
+         range = ifelse(range == "minimum", "минимум", "максимум"),
+         range = factor(range, levels=c("минимум", "максимум"))) %>% 
+  ggplot(aes(entropy, percentage, fill = as.factor(n_types), label = f_id))+
+  geom_point(show.legend = FALSE)+
+  ggrepel::geom_label_repel(size = 6)+
+  facet_grid(type~range)+
+  labs(y = 'процент "исследователей", обнаруживших всю вариативность', 
+       fill = "количество\nвариантов",
+       x = "энтропия")
+```
+
+Номер на графике соотносится с номером вопроса в анкете.
+
+# Заключение
+
+## Заключение
+
+* прескриптивная vs. дескриптивная лингвистика
+* вариативность -- предмет исследования, а не пренебрежения (если понравилось -- пройдите опрос Вани Левина)
+* вариативность можно описывать при помощи энтропии
+* бутстрэп -- отличный способ получить более надежную статистическую оценку
 
 # References {.allowframebreaks}
